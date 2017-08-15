@@ -33,7 +33,9 @@ class Network(object):
             # fully connected activation
             self.hidden_activation = tf.nn.relu
             # gym action space for ms pacman, similar games
-            self.n_outputs = env.action_space.n # there are 9 actions available in default env
+            self.env = gym.make('MsPacman-v0')
+            self.obs = self.env.reset()
+            self.n_outputs = self.env.action_space.n # there are 9 actions available in default env
             # weight initialization
             self.initializer = tf.contrib.layers.variance_scaling_initializer()
 
