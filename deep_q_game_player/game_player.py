@@ -23,7 +23,7 @@ class Epsilon_Greedy(object):
             self.eps_max = 1.0
             self.eps_decay_steps = 50000
             self.n_outputs = 9
-
+    # return max q_value with probability p, random with probability 1-p -- epsilon
     def e_greedy(self, q_values, step):
         self.epsilon = max(self.eps_min, self.eps_max - (self.eps_max-self.eps_min) * step/self.eps_decay_steps)
         if rnd.rand() < self.epsilon:
@@ -93,6 +93,7 @@ def main(FLAGS):
     replay = Replay()
     #X_state, actor_q_values, actor_vars, critic_..., copy_ops, copy_critic...
     X_state = tf.placeholder(tf.float32, shape=[None, settings.input_height, settings.input_width, settings.input_channels])
+    #setup both an actor and a 'critic' network -- methodology to predict and play as cost function (y-y')
     actor_q_values, actor_vars = nn.q_network(X_state, name='q_networks/actor')
     critic_q_values, critic_vars = nn.q_network(X_state, name='q_networks/critic')
     copy_ops = [actor_var.assign(critic_vars[var_name]) for var_name, actor_var in actor_vars.items()]
@@ -111,6 +112,7 @@ def main(FLAGS):
     logger.info('finished setup')
     #with tf.Session as sess: ********put this in driver
     with tf.Session() as sess:
+        # check for saved session
         if os.path.isfile(settings.checkpoint_path):
             save.restore(sess, settings.checkpoint_path)
         else:
@@ -123,16 +125,20 @@ def main(FLAGS):
             if settings.done:
                 logger.info('uh oh hit the done!')
                 settings.obs = settings.env.reset()
+                #manufactured 'fast forward'
                 for skip in range(settings.skip_start):
                     obs, reward, settings.done, info = settings.env.step(0)
                 state = network.preprocess_observation(obs, settings.mspacmancolor)
                 #print(reward, settings.done, info)
             
+            # vector of q values
             q_values = actor_q_values.eval(feed_dict={X_state: [state]})
+            # epsilon greedy method to retrieve next action
             action = greed.e_greedy(q_values, step)
-
+            # take this action
             obs, reward, settings.done, info = settings.env.step(action)
             next_state = network.preprocess_observation(obs, settings.mspacmancolor)
+            # record these actions in replay memory
             replay.replay_memory.append((state, action, reward, next_state, 1.0-settings.done))
             state = next_state
 
@@ -140,6 +146,7 @@ def main(FLAGS):
                 continue
 
             X_state_val, X_action_val, rewards, X_next_state_val, continues = (replay.sample_memories(settings.batch_size))
+
             next_q_values = actor_q_values.eval(feed_dict={X_state: X_next_state_val})
             max_next_q_values = np.max(next_q_values, axis=1, keepdims=True)
             y_val = rewards + continues*settings.discount_rate * max_next_q_values
